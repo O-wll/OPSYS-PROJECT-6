@@ -281,6 +281,29 @@ int main(int argc, char **argv) {
 			if (oldPIDIndex != -1 && oldPage != -1) {
 				processTable[oldPIDIndex].pageTable[oldPage] = -1;
 		    	}
+
+			// Load new page into chosen frame
+			frameTable[chosenFrame].occupied = 1;
+			frameTable[chosenFrame].dirty = isWrite;
+			frameTable[chosenFrame].lastRefSec = clock->seconds;
+			frameTable[chosenFrame].lastRefNano = clock->nanoseconds;
+			frameTable[chosenFrame].processIndex = pcbIndex;
+			frameTable[chosenFrame].pageNumber = page;
+
+			// Update this process's page table
+			processTable[pcbIndex].pageTable[page] = chosenFrame;
+
+			// Respond to worker
+			OssMSG response;
+			response.mtype = msg.pid;
+			response.pid = msg.pid;
+			response.address = address;
+			response.isWrite = isWrite;
+			msgsnd(msgid, &response, sizeof(OssMSG) - sizeof(long), 0);
+			
+			fprintf(file, "OSS: Loaded page %d of P%d into frame %d at %u:%u (%s)\n", page, msg.pid, chosenFrame, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
+			printf("OSS: Loaded page %d of P%d into frame %d at %u:%u (%s)\n", page, msg.pid, chosenFrame, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
+
 		}
 	}
 	// Detach shared memory
