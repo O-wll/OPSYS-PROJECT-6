@@ -303,7 +303,29 @@ int main(int argc, char **argv) {
 			
 			fprintf(file, "OSS: Loaded page %d of P%d into frame %d at %u:%u (%s)\n", page, msg.pid, chosenFrame, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
 			printf("OSS: Loaded page %d of P%d into frame %d at %u:%u (%s)\n", page, msg.pid, chosenFrame, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
-
+		}
+		// Check every second for printing memory map
+		static unsigned int lastPrintSec = 0;
+		if (clock->seconds > lastPrintSec) { // Indicate when memory layout was printed
+		    	lastPrintSec = clock->seconds; // Update
+		    	fprintf(file, "Memory Layout at %u:%u\n", clock->seconds, clock->nanoseconds);
+		    	printf("Memory Layout at %u:%u\n", clock->seconds, clock->nanoseconds);
+		    
+			for (int i = 0; i < FRAME_COUNT; i++) { // Goes over 256 frames and prints out logs
+				fprintf(file, "Frame %d: %s Dirty=%d LastRef=%u:%u\n", i, frameTable[i].occupied ? "Occupied" : "Empty", frameTable[i].dirty, frameTable[i].lastRefSec, frameTable[i].lastRefNano);
+				printf("Frame %d: %s Dirty=%d LastRef=%u:%u\n", i, frameTable[i].occupied ? "Occupied" : "Empty", frameTable[i].dirty, frameTable[i].lastRefSec, frameTable[i].lastRefNano);
+			}
+		   
+			for (int i = 0; i < MAX_PCB; i++) { // Prints out PCB process
+				if (processTable[i].occupied) {
+			    		fprintf(file, "P%d Page Table: [", processTable[i].pid);
+					printf("P%d Page Table: [", processTable[i].pid);
+					for (int j = 0; j < NUM_PAGES; j++) {
+						fprintf(file, "%d ", processTable[i].pageTable[j]);
+			    		}
+			    		fprintf(file, "]\n");
+				}
+		    	}
 		}
 	}
 	// Detach shared memory
