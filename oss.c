@@ -13,6 +13,22 @@
 
 #define NANO_TO_SEC 1000000000
 
+// I/O queue as parallel arrays
+int ioQueue_pcbIndex[FRAME_COUNT]; // index of PCB table
+int ioQueue_address[FRAME_COUNT]; // Actual memory address
+int ioQueue_page[FRAME_COUNT]; // Page number
+int ioQueue_isWrite[FRAME_COUNT]; // Dirty bit
+
+// Simulated time
+unsigned int ioQueue_fulfillSec[FRAME_COUNT];
+unsigned int ioQueue_fulfillNano[FRAME_COUNT];
+
+// Circular queue
+int ioQueueHead = 0;
+int ioQueueTail = 0;
+int ioQueueCount = 0;
+int blocked[MAX_PCB] = {0};  // 1 if process is blocked on I/O
+
 void incrementClock(SimulatedClock *clock, int addSec, int addNano); // Clock increment
 void signalHandler(int sig);
 void help();
@@ -134,6 +150,81 @@ int main(int argc, char **argv) {
 		int randomNano = (rand() % 90001) + 10000; // Random increment
 		incrementClock(clock, 0, randomNano);
 
+		if (ioQueueCount > 0) { // See if requests are waiting
+		    	int head = ioQueueHead; // FIFO
+		    	if (clock->seconds > ioQueue_fulfillSec[head] || (clock->seconds == ioQueue_fulfillSec[head] && clock->nanoseconds >= ioQueue_fulfillNano[head])) { // Check if time to fulfill request
+				// Get info about request
+				int pcbIndex = ioQueue_pcbIndex[head];
+				int page = ioQueue_page[head];
+				int isWrite = ioQueue_isWrite[head];
+				int address = ioQueue_address[head];
+
+				// Find a free frame
+				int chosenFrame = -1;
+				for (int i = 0; i < FRAME_COUNT; i++) {
+			    		if (!frameTable[i].occupied) {
+						chosenFrame = i;
+						break;
+			    		}
+				}
+
+				// If no free frame, use LRU replacement
+				if (chosenFrame == -1) {
+			    		unsigned int oldestSec = 0, oldestNano = 0;
+			    		int firstFound = 1;
+	
+					for (int i = 0; i < FRAME_COUNT; i++) { // Find the oldest frame and evict it.
+						if (firstFound || frameTable[i].lastRefSec < oldestSec || (frameTable[i].lastRefSec == oldestSec && frameTable[i].lastRefNano < oldestNano)) {
+				    			oldestSec = frameTable[i].lastRefSec;
+				    			oldestNano = frameTable[i].lastRefNano;
+				    			chosenFrame = i;
+				    			firstFound = 0;
+						}
+			    		}
+ 
+			      		// If dirty, simulate disk write.
+			               if (frameTable[chosenFrame].dirty) {
+			       		       fprintf(file, "OSS: Dirty frame %d being evicted, adding 14ms\n", chosenFrame);
+			       		       incrementClock(clock, 0, 14000000);
+			   	       }
+
+            			       // Clear old page from previous process.
+            			       int oldPIDIndex = frameTable[chosenFrame].processIndex;
+			   	       int oldPage = frameTable[chosenFrame].pageNumber;
+			   	       if (oldPIDIndex != -1 && oldPage != -1) {
+			       		       processTable[oldPIDIndex].pageTable[oldPage] = -1;
+			   	       }
+				}
+
+				// Load page into chosen frame
+				frameTable[chosenFrame].occupied = 1;
+				frameTable[chosenFrame].dirty = isWrite;
+				frameTable[chosenFrame].lastRefSec = clock->seconds;
+				frameTable[chosenFrame].lastRefNano = clock->nanoseconds;
+				frameTable[chosenFrame].processIndex = pcbIndex;
+			 	frameTable[chosenFrame].pageNumber = page;
+
+				// Update page table for this process
+				processTable[pcbIndex].pageTable[page] = chosenFrame;
+				blocked[pcbIndex] = 0;
+
+				// Send reply message back to user
+				OssMSG response;
+				response.mtype = processTable[pcbIndex].pid;
+				response.pid = processTable[pcbIndex].pid;
+				response.address = address;
+				response.isWrite = isWrite;
+				msgsnd(msgid, &response, sizeof(OssMSG) - sizeof(long), 0);
+
+				// Log it
+				fprintf(file, "OSS: Fulfilled I/O for P%d page %d into frame %d at %u:%u (%s)\n", response.pid, page, chosenFrame, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
+				printf("OSS: Fulfilled I/O for P%d page %d into frame %d at %u:%u (%s)\n", response.pid, page, chosenFrame, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
+				// Remove from queue (circular)
+			         ioQueueHead = (ioQueueHead + 1) % FRAME_COUNT;
+			 	 ioQueueCount--;
+		    	}
+		}
+
 		if (difftime(time(NULL), startTime) >= 5) { // Terminate after 5 real seconds.
 		    	printf("OSS: 5 real seconds passed. Terminating.\n");
 			fprintf(file, "OSS: Real-time limit of 5 seconds reached. Terminating simulation.\n");
@@ -253,21 +344,28 @@ int main(int argc, char **argv) {
 			}
 
 			if (chosenFrame == -1) { // If free frame was not found
-				// Prepare variables for LRU
-				unsigned int oldestSec = 0;
-				unsigned int oldestNano = 0;
-				int firstFound = 1;
-				
+			    	// Calculate fulfill time = now + 14ms
+				unsigned int fulfillSec = clock->seconds;
+			    	unsigned int fulfillNano = clock->nanoseconds + 14000000;
+			    	if (fulfillNano >= NANO_TO_SEC) {
+					fulfillSec += 1;
+					fulfillNano -= NANO_TO_SEC;
+			    	}
 
-				for (int i = 0; i < FRAME_COUNT; i++) { // Go through each frame and choose the least recently used frame.
-					if (firstFound || frameTable[i].lastRefSec < oldestSec || (frameTable[i].lastRefSec == oldestSec && frameTable[i].lastRefNano < oldestNano)) {
-						oldestSec = frameTable[i].lastRefSec;
-						oldestNano = frameTable[i].lastRefNano;
-						chosenFrame = i;
-						firstFound = 0;
-					}
-				}
+			    	// Add to I/O queue
+				ioQueue_pcbIndex[ioQueueTail] = pcbIndex;
+			    	ioQueue_address[ioQueueTail] = address;
+			    	ioQueue_page[ioQueueTail] = page;
+			    	ioQueue_isWrite[ioQueueTail] = isWrite;
+			    	ioQueue_fulfillSec[ioQueueTail] = fulfillSec;
+			    	ioQueue_fulfillNano[ioQueueTail] = fulfillNano;
 
+			    	blocked[pcbIndex] = 1;
+			    	ioQueueTail = (ioQueueTail + 1) % FRAME_COUNT;
+			    	ioQueueCount++;
+
+			    
+				continue; // Skip sending response for now.
 			}
 		    
 			if (frameTable[chosenFrame].dirty) { // Simulate writing
@@ -322,8 +420,11 @@ int main(int argc, char **argv) {
 					printf("P%d Page Table: [", processTable[i].pid);
 					for (int j = 0; j < NUM_PAGES; j++) {
 						fprintf(file, "%d ", processTable[i].pageTable[j]);
+						printf("%d ", processTable[i].pageTable[j]);
+
 			    		}
 			    		fprintf(file, "]\n");
+					printf("]\n");
 				}
 		    	}
 		}
