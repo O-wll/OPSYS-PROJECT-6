@@ -20,6 +20,65 @@ void help();
 PCB processTable[MAX_PCB]; // Process Table
 
 int main(int argc, char **argv) {
+	int userInput = 0;
+	int totalProcesses = 40;
+	int simul = 18;
+	int interval = 500;
+	char *logFileName = "oss.log";
+
+	while ((userInput = getopt(argc, argv, "n:s:i:f:hv")) != -1) {
+		switch(userInput) {
+			case 'n': // How many child processes to launch.
+				totalProcesses = atoi(optarg);
+				if (totalProcesses <= 0) {
+					printf("Error: Total child processes must be at least one. \n");
+					exit(1);
+				}
+				break;
+			case 's': // How many simulations to run at once.
+				simul = atoi(optarg);
+				// Ensuring simulations isn't zero or below for the program to work.
+				if (simul < 0) {
+					printf("Error: Simulations must be positive. \n");
+					exit(1);
+				}
+
+				if (simul > 18) {
+					printf("Simulations CANNOT exceed 18 \n");
+					simul = 18;
+				}
+				break;
+			case 'i': // How often to launch child interval
+				interval = atoi(optarg);
+				if (interval <= 0) {
+					printf("Error: interval must be positive. \n");
+                                        exit(1);
+                                }
+				break;
+			case 'f': // Input name of log file
+				logFileName = optarg;
+                                break;
+			case 'h': // Prints out help function.
+				help();
+				return 0;
+			case '?': // Invalid user argument handling.
+				printf("Error: Invalid argument detected \n");
+				printf("Usage: ./oss.c -h to learn how to use this program \n");
+				exit(1);
+		}
+	}
+
+	// Start Alarm
+	alarm(60);
+	signal(SIGINT, signalHandler);
+	signal(SIGALRM, signalHandler);
+
+	FILE *file = fopen(logFileName, "w");
+	if (!file) {
+		printf("Error: failed opening log file. \n");
+		exit(1);
+	}
+	
 	return 0;
 }
 
