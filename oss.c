@@ -212,6 +212,75 @@ int main(int argc, char **argv) {
 		    	int isWrite = msg.isWrite;
 			// Convert address to page number
 		    	int page = address / 1024;
+
+			// Look up frame number for requested page
+			int frameIndex = processTable[pcbIndex].pageTable[page];	
+			
+			if (frameIndex != -1) { // Page Hit
+			    	// Update LRU, when it was last accessed.
+				frameTable[frameIndex].lastRefSec = clock->seconds;
+			    	frameTable[frameIndex].lastRefNano = clock->nanoseconds;
+			   
+				if (isWrite) { // Update dirty bit if write operation.
+					frameTable[frameIndex].dirty = 1;
+				}
+				
+				// Send message back to worker process.
+				OssMSG response;
+			    	response.mtype = msg.pid;
+			    	response.pid = msg.pid;
+			    	response.address = address;
+			    	response.isWrite = isWrite;
+			    	msgsnd(msgid, &response, sizeof(OssMSG) - sizeof(long), 0);	
+				
+				// Output
+				printf("OSS: P%d accessed page %d (frame %d) at %u:%u (%s)\n", msg.pid, page, frameIndex, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
+
+			    	fprintf(file, "OSS: P%d accessed page %d (frame %d) at %u:%u (%s)\n", msg.pid, page, frameIndex, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
+				continue;  // Skip further handling for this message
+			}
+
+			// Page fault
+			fprintf(file, "OSS: PAGE FAULT for P%d on page %d at time %u:%u\n", msg.pid, page, clock->seconds, clock->nanoseconds);
+       			printf("OSS: PAGE FAULT for P%d on page %d at time %u:%u\n", msg.pid, page, clock->seconds, clock->nanoseconds);
+
+			int chosenFrame = -1; // Find a free frame
+			for (int i = 0; i < FRAME_COUNT; i++) {
+			    	if (!frameTable[i].occupied) {
+					chosenFrame = i;
+					break;
+			    	}
+			}
+
+			if (chosenFrame == -1) { // If free frame was not found
+				// Prepare variables for LRU
+				unsigned int oldestSec = 0;
+				unsigned int oldestNano = 0;
+				int firstFound = 1;
+				
+
+				for (int i = 0; i < FRAME_COUNT; i++) { // Go through each frame and choose the least recently used frame.
+					if (firstFound || frameTable[i].lastRefSec < oldestSec || (frameTable[i].lastRefSec == oldestSec && frameTable[i].lastRefNano < oldestNano)) {
+						oldestSec = frameTable[i].lastRefSec;
+						oldestNano = frameTable[i].lastRefNano;
+						chosenFrame = i;
+						firstFound = 0;
+					}
+				}
+
+			}
+		    
+			if (frameTable[chosenFrame].dirty) { // Simulate writing
+				fprintf(file, "OSS: Evicting dirty frame %d, adding 14ms I/O delay\n", chosenFrame);       
+			       	incrementClock(clock, 0, 14000000); // 14ms
+		    	}
+
+			// Remove old page from page table.
+		    	int oldPIDIndex = frameTable[chosenFrame].processIndex;
+		    	int oldPage = frameTable[chosenFrame].pageNumber;
+			if (oldPIDIndex != -1 && oldPage != -1) {
+				processTable[oldPIDIndex].pageTable[oldPage] = -1;
+		    	}
 		}
 	}
 	// Detach shared memory
