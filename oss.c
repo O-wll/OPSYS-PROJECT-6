@@ -191,6 +191,28 @@ int main(int argc, char **argv) {
 	  			  nextLaunchTime = clock->seconds * NANO_TO_SEC + clock->nanoseconds + interval * 1000000;
 			}
 		}
+
+		// Receive message from worker.
+		OssMSG msg;
+		while (msgrcv(msgid, &msg, sizeof(OssMSG) - sizeof(long), 0, IPC_NOWAIT) > 0) {
+		    	int pcbIndex = -1; // Get PCB index that corresponds to PID in message.
+		    	for (int i = 0; i < MAX_PCB; i++) {
+				if (processTable[i].occupied && processTable[i].pid == msg.pid) {
+			    		pcbIndex = i;
+			     		break;
+				}
+		    	}
+		    	
+			if (pcbIndex == -1) { // Skip if not found
+				continue;
+			}
+
+			// Get memory address, check for write or read operation
+		    	int address = msg.address;
+		    	int isWrite = msg.isWrite;
+			// Convert address to page number
+		    	int page = address / 1024;
+		}
 	}
 	// Detach shared memory
     	if (shmdt(clock) == -1) {
