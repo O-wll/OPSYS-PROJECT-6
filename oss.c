@@ -448,6 +448,21 @@ int main(int argc, char **argv) {
 		    	}
 		}
 	}
+
+	double elapsedSimulatedTime = clock->seconds + (clock->nanoseconds / 1000000000);
+        double accessRate = (elapsedSimulatedTime > 0) ? (double)totalAccesses / elapsedSimulatedTime : 0;
+        double faultRate = (totalAccesses > 0) ? (double)totalPageFaults / totalAccesses : 0;
+        fprintf(file, "\n==== Final Statistics ====\n");
+        fprintf(file, "Total Memory Accesses: %llu\n", totalAccesses);
+        fprintf(file, "Total Page Faults: %llu\n", totalPageFaults);
+        fprintf(file, "Memory Accesses per Simulated Second: %.2f\n", accessRate);
+        fprintf(file, "Page Fault Rate: %.4f\n", faultRate);
+        printf("\n==== Final Statistics ====\n");
+        printf("Total Memory Accesses: %llu\n", totalAccesses);
+        printf("Total Page Faults: %llu\n", totalPageFaults);
+        printf("Memory Accesses per Simulated Second: %.2f\n", accessRate);
+        printf("Page Fault Rate: %.4f\n", faultRate);
+
 	// Detach shared memory
     	if (shmdt(clock) == -1) {
         	printf("Error: OSS Shared memory detachment failed \n");
@@ -465,21 +480,6 @@ int main(int argc, char **argv) {
 		printf("Error: Removing msg queue failed. \n");
 		exit(1);
 	}
-
-	double elapsedSimulatedTime = clock->seconds + (clock->nanoseconds / 1e9);
-	double accessRate = (elapsedSimulatedTime > 0) ? (double)totalAccesses / elapsedSimulatedTime : 0;
-	double faultRate = (totalAccesses > 0) ? (double)totalPageFaults / totalAccesses : 0;
-
-	fprintf(file, "\n==== Final Statistics ====\n");
-	fprintf(file, "Total Memory Accesses: %llu\n", totalAccesses);
-	fprintf(file, "Total Page Faults: %llu\n", totalPageFaults);
-	fprintf(file, "Memory Accesses per Simulated Second: %.2f\n", accessRate);
-	fprintf(file, "Page Fault Rate: %.4f\n", faultRate);
-	printf("\n==== Final Statistics ====\n");
-        printf("Total Memory Accesses: %llu\n", totalAccesses);
-        printf("Total Page Faults: %llu\n", totalPageFaults);
-        printf("Memory Accesses per Simulated Second: %.2f\n", accessRate);
-        printf("Page Fault Rate: %.4f\n", faultRate);
 
 	fclose(file);
 
