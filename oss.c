@@ -28,6 +28,7 @@ int main(int argc, char **argv) {
 	int launched = 0;
 	int activeProcesses = 0;
 	int nextLaunchTime = 0;
+	time_t startTime = time(NULL);
 	char *logFileName = "oss.log";
 
 	while ((userInput = getopt(argc, argv, "n:s:i:f:hv")) != -1) {
@@ -126,6 +127,36 @@ int main(int argc, char **argv) {
 		frameTable[i].lastRefNano = 0;
 	}
 
+	// Main Loop
+	while (launched < totalProcesses || activeProcesses > 0) {
+		
+		// Random clock increment
+		int randomNano = (rand() % 90001) + 10000; // Random increment
+		incrementClock(clock, 0, randomNano);
+
+		if (difftime(time(NULL), startTime) >= 5) { // Terminate after 5 real seconds.
+		    	printf("OSS: 5 real seconds passed. Terminating.\n");
+			fprintf(file, "OSS: Real-time limit of 5 seconds reached. Terminating simulation.\n");
+		    	break;
+		}
+		
+		// Status of process
+		int status;
+		pid_t pid = waitpid(-1, &status, WNOHANG);
+		if (pid > 0) { // Check if PID  is terminating
+		    	for (int i = 0; i < MAX_PCB; i++) { // If so, find PID and free up process index.
+				if (processTable[i].occupied && processTable[i].pid == pid) {
+			    		processTable[i].occupied = 0;
+					
+					printf("OSS: Process %d terminated at time %u:%u\n", pid, clock->seconds, clock->nanoseconds);
+					fprintf(file, "OSS: Process %d terminated at time %u:%u\n", pid, clock->seconds, clock->nanoseconds);
+					
+					activeProcesses--;
+			    		break;
+				}
+		    	}
+		}
+	}
 	// Detach shared memory
     	if (shmdt(clock) == -1) {
         	printf("Error: OSS Shared memory detachment failed \n");
@@ -145,7 +176,6 @@ int main(int argc, char **argv) {
 	}
        
 	fclose(file);
-	
 
 	return 0;
 }
