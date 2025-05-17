@@ -156,6 +156,41 @@ int main(int argc, char **argv) {
 				}
 		    	}
 		}
+
+
+		if (launched < totalProcesses && activeProcesses < simul && (clock->seconds * NANO_TO_SEC + clock->nanoseconds) >= nextLaunchTime) { // Launch processes 
+			// Find free PCB slot
+			int pcbIndex = -1;
+			for (int i = 0; i < MAX_PCB; i++) {
+			    	if (!processTable[i].occupied) { // Set PCB index once fouund.
+					pcbIndex = i;
+					break;
+			    	}
+			}
+
+			if (pcbIndex != -1) { // Launch child
+				pid_t childPid = fork();
+				if (childPid == 0) {
+			    		execl("./worker", "./worker", NULL);
+			    		perror("execl failed");
+			    		exit(1);
+				}
+				//  Update PCB Table
+				 processTable[pcbIndex].occupied = 1;
+	 			 processTable[pcbIndex].pid = childPid;
+	 			 processTable[pcbIndex].startSeconds = clock->seconds;
+	 			 processTable[pcbIndex].startNano = clock->nanoseconds;
+			
+	 			 for (int j = 0; j < NUM_PAGES; j++) {
+	 				 processTable[pcbIndex].pageTable[j] = -1;
+	 			 }
+	 
+				 // Update variables
+				  launched++;
+	  			  activeProcesses++;
+	  			  nextLaunchTime = clock->seconds * NANO_TO_SEC + clock->nanoseconds + interval * 1000000;
+			}
+		}
 	}
 	// Detach shared memory
     	if (shmdt(clock) == -1) {
