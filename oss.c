@@ -18,12 +18,16 @@ void signalHandler(int sig);
 void help();
 
 PCB processTable[MAX_PCB]; // Process Table
+FrameTableEntry frameTable[FRAME_COUNT]; // Frame Table
 
 int main(int argc, char **argv) {
 	int userInput = 0;
 	int totalProcesses = 40;
 	int simul = 18;
 	int interval = 500;
+	int launched = 0;
+	int activeProcesses = 0;
+	int nextLaunchTime = 0;
 	char *logFileName = "oss.log";
 
 	while ((userInput = getopt(argc, argv, "n:s:i:f:hv")) != -1) {
@@ -78,7 +82,71 @@ int main(int argc, char **argv) {
 		printf("Error: failed opening log file. \n");
 		exit(1);
 	}
+
+	// SIMULATED CLOCK
+	int shmid = shmget(SHM_KEY, sizeof(SimulatedClock), IPC_CREAT | 0666); // Creating shared memory using shmget.
+	if (shmid == -1) { // If shmid is -1 as a result of shmget failing and returning -1, error message will print.
+        	printf("Error: OSS shmget failed. \n");
+        	exit(1);
+    	}
+
+	SimulatedClock *clock = (SimulatedClock *)shmat(shmid, NULL, 0); // Attach shared memory, clock is now a pointer to SimulatedClock structure.
+	if (clock == (void *)-1) { // if shmat, the attaching shared memory function, fails, it returns an invalid memory address.
+		printf("Error: OSS shared memory attachment failed. \n");
+		exit(1);
+	}
+
+	// MESSAGE QUEUE
+	int msgid = msgget(MSG_KEY, IPC_CREAT | 0666); // Setting up msg queue.
+        if (msgid == -1) {
+                printf("Error: OSS msgget failed. \n");
+                exit(1);
+        }
+
+	// Initialize clock.
+	clock->seconds = 0;
+	clock->nanoseconds = 0;
+
+	for (int i = 0; i < MAX_PCB; i++) { // Initialize process table
+		processTable[i].occupied = 0;
+		processTable[i].pid = -1;
+		processTable[i].startSeconds = 0;
+		processTable[i].startNano = 0;
+		for (int j = 0; j < NUM_PAGES; j++) {
+			processTable[i].pageTable[j] = -1; // -1 = not in memory
+		}
+	}
+
+	for (int i = 0; i < FRAME_COUNT; i++) { // Initialize frame table
+		frameTable[i].occupied = 0;
+		frameTable[i].dirty = 0;
+		frameTable[i].processIndex = -1;
+		frameTable[i].pageNumber = -1;
+		frameTable[i].lastRefSec = 0;
+		frameTable[i].lastRefNano = 0;
+	}
+
+	// Detach shared memory
+    	if (shmdt(clock) == -1) {
+        	printf("Error: OSS Shared memory detachment failed \n");
+		exit(1);
+    	}
+
+    	// Remove shared memory
+    	if (shmctl(shmid, IPC_RMID, NULL) == -1) {
+        	printf("Error: Removing memory failed \n");
+		exit(1);
+    	}
+
+	// Remove message queue
+	if (msgctl(msgid, IPC_RMID, NULL) == -1) {
+		printf("Error: Removing msg queue failed. \n");
+		exit(1);
+	}
+       
+	fclose(file);
 	
+
 	return 0;
 }
 
@@ -133,6 +201,8 @@ void signalHandler(int sig) { // Signal handler
 		       	exit(1);
 	       	}
        	}
+
+
 
 	exit(1);
 }
