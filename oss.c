@@ -11,6 +11,10 @@
 #include <string.h> // For memset
 #include "oss.h"
 
+// Author: Dat Nguyen
+// Date: 05/17/2025
+// oss.c is the main function that simulates loading pages, simulates queue system, and handles any page faults or hits.
+
 #define NANO_TO_SEC 1000000000
 
 // I/O queue as parallel arrays
@@ -551,6 +555,5 @@ void help() {
     	printf("-s simul      Maximum number of simultaneous processes (max: 18).\n");
     	printf("-i interval   Time interval (ms) between process launches (default: 500).\n");
 	printf("-f logfile    Name of the log file to write output (default: oss.log).\n");
-    	printf("-v            Enable verbose output to both screen and file.\n");
 }
 

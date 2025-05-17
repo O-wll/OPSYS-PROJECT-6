@@ -8,6 +8,10 @@
 #include <string.h>
 #include "oss.h"
 
+// Author: Dat Nguyen
+// Date: 05/17/2025
+// worker.c is the child process that runs when oss.c forks. It simulates processes in page and can terminate at random.
+
 #define READ_BIAS 80  // 80% read, 20% write
 
 int main() {
@@ -34,7 +38,7 @@ int main() {
     }
 
     int memoryAccessCount = 0;
-    int terminateThreshold = 1000 + (rand() % 201); // 1000 ± 100
+    int terminateThreshold = 1000 + (rand() % 201);
 
     while (1) {
         // Choose random page (0 to 31)
