@@ -243,6 +243,17 @@ int main(int argc, char **argv) {
 					fprintf(file, "OSS: Process %d terminated at time %u:%u\n", pid, clock->seconds, clock->nanoseconds);
 					
 					activeProcesses--;
+					// Free frames associated with process.
+					for (int f = 0; f < FRAME_COUNT; f++) {
+					    	if (frameTable[f].occupied && frameTable[f].processIndex == i) {
+							frameTable[f].occupied = 0;
+							frameTable[f].dirty = 0;
+							frameTable[f].processIndex = -1;
+							frameTable[f].pageNumber = -1;
+							frameTable[f].lastRefSec = 0;
+							frameTable[f].lastRefNano = 0;
+					    	}
+					}
 			    		break;
 				}
 		    	}
@@ -308,7 +319,10 @@ int main(int argc, char **argv) {
 			int frameIndex = processTable[pcbIndex].pageTable[page];	
 			
 			if (frameIndex != -1) { // Page Hit
-			    	// Update LRU, when it was last accessed.
+
+				// increment clock by 100ns
+			    	incrementClock(clock,0,100);
+				// Update LRU, when it was last accessed.
 				frameTable[frameIndex].lastRefSec = clock->seconds;
 			    	frameTable[frameIndex].lastRefNano = clock->nanoseconds;
 			   
