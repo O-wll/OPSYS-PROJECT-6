@@ -46,6 +46,8 @@ int main(int argc, char **argv) {
 	int nextLaunchTime = 0;
 	time_t startTime = time(NULL);
 	char *logFileName = "oss.log";
+	unsigned long long totalAccesses = 0;
+	unsigned long long totalPageFaults = 0;
 
 	while ((userInput = getopt(argc, argv, "n:s:i:f:hv")) != -1) {
 		switch(userInput) {
@@ -185,7 +187,6 @@ int main(int argc, char **argv) {
 			      		// If dirty, simulate disk write.
 			               if (frameTable[chosenFrame].dirty) {
 			       		       fprintf(file, "OSS: Dirty frame %d being evicted, adding 14ms\n", chosenFrame);
-			       		       incrementClock(clock, 0, 14000000);
 			   	       }
 
             			       // Clear old page from previous process.
@@ -342,6 +343,7 @@ int main(int argc, char **argv) {
 				printf("OSS: P%d accessed page %d (frame %d) at %u:%u (%s)\n", msg.pid, page, frameIndex, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
 
 			    	fprintf(file, "OSS: P%d accessed page %d (frame %d) at %u:%u (%s)\n", msg.pid, page, frameIndex, clock->seconds, clock->nanoseconds, isWrite ? "WRITE" : "READ");
+				totalAccesses++;
 				continue;  // Skip further handling for this message
 			}
 
@@ -349,6 +351,9 @@ int main(int argc, char **argv) {
 			fprintf(file, "OSS: PAGE FAULT for P%d on page %d at time %u:%u\n", msg.pid, page, clock->seconds, clock->nanoseconds);
        			printf("OSS: PAGE FAULT for P%d on page %d at time %u:%u\n", msg.pid, page, clock->seconds, clock->nanoseconds);
 
+			totalAccesses++;
+			totalPageFaults++;
+			
 			int chosenFrame = -1; // Find a free frame
 			for (int i = 0; i < FRAME_COUNT; i++) {
 			    	if (!frameTable[i].occupied) {
@@ -460,7 +465,22 @@ int main(int argc, char **argv) {
 		printf("Error: Removing msg queue failed. \n");
 		exit(1);
 	}
-       
+
+	double elapsedSimulatedTime = clock->seconds + (clock->nanoseconds / 1e9);
+	double accessRate = (elapsedSimulatedTime > 0) ? (double)totalAccesses / elapsedSimulatedTime : 0;
+	double faultRate = (totalAccesses > 0) ? (double)totalPageFaults / totalAccesses : 0;
+
+	fprintf(file, "\n==== Final Statistics ====\n");
+	fprintf(file, "Total Memory Accesses: %llu\n", totalAccesses);
+	fprintf(file, "Total Page Faults: %llu\n", totalPageFaults);
+	fprintf(file, "Memory Accesses per Simulated Second: %.2f\n", accessRate);
+	fprintf(file, "Page Fault Rate: %.4f\n", faultRate);
+	printf("\n==== Final Statistics ====\n");
+        printf("Total Memory Accesses: %llu\n", totalAccesses);
+        printf("Total Page Faults: %llu\n", totalPageFaults);
+        printf("Memory Accesses per Simulated Second: %.2f\n", accessRate);
+        printf("Page Fault Rate: %.4f\n", faultRate);
+
 	fclose(file);
 
 	return 0;
